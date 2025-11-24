@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurante Ágil - Sistema Completo</title>
+    
+    <!-- 1. Estilos (Tailwind CSS) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. Motor de React y Babel para que funcione en el navegador sin instalar nada -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Estilos base -->
+    <style>
+        body { background-color: #f1f5f9; font-family: system-ui, sans-serif; }
+        /* Ocultar elementos al imprimir */
+        @media print { .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- 3. Lógica de la Aplicación -->
+    <script type="text/babel" data-type="module">
+        // --- IMPORTS DESDE CDN (No requiere instalación) ---
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { 
+            getFirestore, collection, addDoc, updateDoc, deleteDoc,
+            doc, onSnapshot, query, orderBy, serverTimestamp 
+        } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { 
+            getAuth, signInAnonymously, onAuthStateChanged, 
+            setPersistence, inMemoryPersistence 
+        } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+        const { useState, useEffect } = React;
+
+        // --- CONFIGURACIÓN DE FIREBASE ---
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyBedWCRDfZWIxj9HNxHqN0bD7G7W3jaKqA",
+            authDomain: "mini-restaurante-d0353.firebaseapp.com",
+            projectId: "mini-restaurante-d0353",
+            storageBucket: "mini-restaurante-d0353.firebasestorage.app",
+            messagingSenderId: "630103435028",
+            appId: "1:630103435028:web:e417df55fe261bcb894401"
+        };
+
+        const APP_ID = 'restaurante-html-v1';
+
+        // --- ICONOS (SVG Manuales) ---
+        const Icon = ({ path, color = "currentColor", size = 24 }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {path}
+            </svg>
+        );
+
+        const Icons = {
+            Beef: <><path d="M12.5 2C7.25 2 3 6.25 3 11.5c0 4.5 3.5 8.5 8 9.5 4.5-1 8-5 8-9.5 0-5.25-4.25-9.5-9.5-9.5z" /><path d="M12.5 2v19" opacity="0.3"/><path d="M7 11.5a5.5 5.5 0 0 1 11 0" opacity="0.3"/><path d="M19 5.5l-2.5 2.5"/></>,
+            Wifi: <path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/>,
+            WifiOff: <path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.58 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/>,
+            Trash: <><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></>,
+            Check: <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>,
+            Clock: <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>,
+            Users: <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
+            Chef: <><path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 9.08 0A5.11 5.11 0 0 1 18.59 6 4 4 0 0 1 20 13.87V21H6Z"/><line x1="6" y1="17" x2="20" y2="17"/></>,
+            Admin: <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>,
+            LogOut: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
+            Utensils: <><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></>,
+            Cash: <><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></>,
+            Card: <><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></>,
+            Download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></>,
+            Print: <><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></>,
+            Plus: <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>
+        };
+
+        // --- COMPONENTES ---
+
+        const LoginScreen = ({ onLogin, isLocal }) => {
+            const users = [
+                { id: 'u1', nombre: 'Vendedor', rol: 'vendedor' },
+                { id: 'u2', nombre: 'Cocinero', rol: 'cocinero' },
+                { id: 'u3', nombre: 'Admin', rol: 'admin' },
+            ];
+
+            return (
+                <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center relative animate-fade-in">
+                        <div className={`absolute top-4 right-4 text-xs px-2 py-1 rounded font-bold flex items-center gap-1 ${isLocal ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
+                            <Icon path={isLocal ? Icons.WifiOff : Icons.Wifi} size={12}/>
+                            {isLocal ? 'LOCAL' : 'ONLINE'}
+                        </div>
+                        <div className="mb-6 flex justify-center text-orange-500">
+                            <Icon path={Icons.Beef} size={64}/>
+                        </div>
+                        <h1 className="text-3xl font-bold text-slate-800 mb-2">Restaurante Ágil</h1>
+                        <p className="text-slate-500 mb-6">Seleccione su Rol</p>
+                        
+                        <div className="space-y-3">
+                            {users.map(u => (
+                                <button key={u.id} onClick={() => onLogin(u)} className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-50 hover:bg-blue-50 border transition-colors group">
+                                    <div className="flex items-center gap-3 font-bold text-slate-700 group-hover:text-blue-700">
+                                        <Icon path={u.rol === 'vendedor' ? Icons.Users : u.rol === 'cocinero' ? Icons.Chef : Icons.Admin} size={20}/>
+                                        {u.nombre}
+                                    </div>
+                                    <span className="text-xs uppercase bg-white px-2 py-1 rounded border font-semibold">{u.rol}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const VendedorView = ({ db, userData, isLocal, localState, setLocalState }) => {
+            const [cart, setCart] = useState([]);
+            const [client, setClient] = useState('');
+            const [payment, setPayment] = useState({ status: 'cancelado', method: '' });
+            const [products, setProducts] = useState(localState.products);
+            const [orders, setOrders] = useState(localState.orders);
+
+            // Sync Online
+            useEffect(() => {
+                if(isLocal || !db) return;
+                try {
+                    const qP = query(collection(db, 'artifacts', APP_ID, 'products'));
+                    const unsubP = onSnapshot(qP, s => setProducts(s.docs.map(d=>({id:d.id,...d.data()}))));
+                    
+                    const qO = query(collection(db, 'artifacts', APP_ID, 'orders'), orderBy('createdAt', 'desc'));
+                    const unsubO = onSnapshot(qO, s => setOrders(s.docs.map(d=>({id:d.id,...d.data()}))));
+                    return () => { unsubP(); unsubO(); }
+                } catch(e) { console.log("Sync error", e); }
+            }, [db, isLocal]);
+
+            const addToCart = (item) => {
+                const exists = cart.find(i => i.id === item.id);
+                if(exists) setCart(cart.map(i => i.id === item.id ? {...i, q: i.q+1} : i));
+                else setCart([...cart, {...item, q: 1}]);
+            };
+
+            const submitOrder = async () => {
+                if(!client || !cart.length) return alert("Falta Cliente o Productos");
+                if(payment.status === 'cancelado' && !payment.method) return alert("Seleccione método de pago");
+
+                const maxTime = Math.max(...cart.map(i => i.prepTime || 15));
+                const nextNum = (orders.length > 0 ? Math.max(...orders.map(o => o.number || 0)) : 0) + 1;
+                
+                const newOrder = {
+                    id: Date.now().toString(),
+                    number: nextNum,
+                    clientName: client,
+                    items: cart,
+                    total: cart.reduce((a,b) => a + (b.price * b.q), 0),
+                    prepTime: maxTime,
+                    status: 'pending',
+                    paymentStatus: payment.status,
+                    paymentMethod: payment.status === 'cancelado' ? payment.method : 'pendiente',
+                    createdAt: new Date(),
+                    seller: userData.nombre
+                };
+
+                const updatedOrders = [newOrder, ...orders];
+                setOrders(updatedOrders);
+                setLocalState(prev => ({ ...prev, orders: updatedOrders }));
+                setCart([]); setClient(''); setPayment({ status: 'cancelado', method: '' });
+
+                if(!isLocal && db) {
+                    try {
+                        await addDoc(collection(db, 'artifacts', APP_ID, 'orders'), { ...newOrder, createdAt: serverTimestamp() });
+                    } catch(e) { console.log("Guardado local"); }
+                }
+            };
+
+            const formatMoney = n => `$${Number(n).toFixed(2)}`;
+
+            return (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
+                    <div className="bg-white p-4 rounded shadow flex flex-col h-full">
+                        <h3 className="font-bold mb-4 flex items-center gap-2 text-slate-700"><Icon path={Icons.Utensils}/> Menú</h3>
+                        <div className="flex-1 overflow-y-auto space-y-2">
+                            {products.map(p => (
+                                <button key={p.id} onClick={() => addToCart(p)} className="w-full flex justify-between p-3 border rounded hover:bg-orange-50 transition-colors">
+                                    <div className="text-left">
+                                        <div className="font-bold">{p.name}</div>
+                                        <div className="text-xs text-slate-400">{p.prepTime} min</div>
+                                    </div>
+                                    <div className="font-bold text-blue-600">{formatMoney(p.price)}</div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-4 rounded shadow flex flex-col border-2 border-slate-100 relative">
+                        <div className="absolute top-0 right-0 bg-slate-800 text-white px-3 py-1 rounded-bl-xl font-bold text-sm">#{((orders[0]?.number || 0) + 1)}</div>
+                        <h3 className="font-bold mb-4">Nueva Orden</h3>
+                        <input className="border p-2 rounded mb-2 w-full bg-slate-50 focus:bg-white outline-none" placeholder="Nombre Cliente" value={client} onChange={e=>setClient(e.target.value)}/>
+                        <div className="flex-1 overflow-auto border-y py-2 mb-2 min-h-[150px]">
+                            {cart.length === 0 && <p className="text-slate-400 text-center mt-10">Carrito Vacío</p>}
+                            {cart.map(i => (
+                                <div key={i.id} className="flex justify-between items-center py-1 border-b last:border-0">
+                                    <span className="font-bold text-xs bg-slate-200 rounded-full w-5 h-5 flex items-center justify-center">{i.q}</span>
+                                    <span className="text-sm flex-1 mx-2">{i.name}</span>
+                                    <span className="text-sm font-mono">{formatMoney(i.price * i.q)}</span>
+                                    <button onClick={() => setCart(cart.filter(x=>x.id!==i.id))} className="text-red-500 hover:text-red-700"><Icon path={Icons.Trash} size={16}/></button>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="bg-slate-50 p-3 rounded mb-3 space-y-2">
+                            <div className="flex justify-between font-bold text-lg"><span>Total</span><span>{formatMoney(cart.reduce((a,b)=>a+b.price*b.q,0))}</span></div>
+                            <div className="flex gap-2 text-xs">
+                                <button onClick={()=>setPayment({...payment, status: 'cancelado'})} className={`flex-1 py-1 rounded border font-bold ${payment.status==='cancelado'?'bg-green-600 text-white':'bg-white'}`}>PAGADO</button>
+                                <button onClick={()=>setPayment({...payment, status: 'pendiente'})} className={`flex-1 py-1 rounded border font-bold ${payment.status==='pendiente'?'bg-red-500 text-white':'bg-white'}`}>PENDIENTE</button>
+                            </div>
+                            {payment.status === 'cancelado' && (
+                                <div className="flex gap-2 text-xs">
+                                    <button onClick={()=>setPayment({...payment, method: 'efectivo'})} className={`flex-1 py-1 rounded border flex justify-center gap-1 ${payment.method==='efectivo'?'bg-blue-100 border-blue-500':''}`}><Icon path={Icons.Cash} size={14}/> Efec.</button>
+                                    <button onClick={()=>setPayment({...payment, method: 'transferencia'})} className={`flex-1 py-1 rounded border flex justify-center gap-1 ${payment.method==='transferencia'?'bg-purple-100 border-purple-500':''}`}><Icon path={Icons.Card} size={14}/> Trans.</button>
+                                </div>
+                            )}
+                        </div>
+                        <button onClick={submitOrder} className="bg-blue-600 text-white py-3 rounded font-bold hover:bg-blue-700 flex justify-center gap-2 shadow-lg active:scale-95 transition-transform"><Icon path={Icons.Check}/> CONFIRMAR VENTA</button>
+                    </div>
+
+                    <div className="bg-white p-4 rounded shadow overflow-auto hidden md:block">
+                        <h3 className="font-bold mb-4">Últimos Pedidos</h3>
+                        <div className="space-y-2">
+                            {orders.map(o => (
+                                <div key={o.id} className="border p-2 rounded text-sm bg-slate-50">
+                                    <div className="flex justify-between font-bold"><span>#{o.number} {o.clientName}</span><span className={o.paymentStatus==='cancelado'?'text-green-600':'text-red-500'}>{o.paymentStatus}</span></div>
+                                    <div className="flex justify-between text-slate-500 mt-1"><span>{o.paymentMethod}</span><span>{formatMoney(o.total)}</span></div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const CocineroView = ({ db, isLocal, localState, setLocalState }) => {
+            const [orders, setOrders] = useState(localState.orders);
+
+            useEffect(() => {
+                if(isLocal || !db) return;
+                try {
+                    const q = query(collection(db, 'artifacts', APP_ID, 'orders'), orderBy('createdAt', 'asc'));
+                    return onSnapshot(q, s => {
+                        setOrders(s.docs.map(d=>({id:d.id,...d.data()})).filter(o => o.status !== 'delivered'));
+                    });
+                } catch(e) {}
+            }, [db, isLocal]);
+
+            const update = (id, status) => {
+                const updated = orders.map(o => o.id === id ? {...o, status} : o).filter(o => status !== 'delivered' || o.id !== id);
+                setOrders(updated);
+                if(isLocal) {
+                    const allOrders = localState.orders.map(o => o.id === id ? {...o, status} : o);
+                    setLocalState(prev => ({...prev, orders: allOrders}));
+                } else if(db) {
+                    updateDoc(doc(db, 'artifacts', APP_ID, 'orders', id), { status });
+                }
+            };
+
+            const activeOrders = orders.filter(o => o.status !== 'delivered');
+
+            return (
+                <div className="h-full overflow-auto">
+                    <h2 className="text-2xl font-bold mb-4 flex gap-2 items-center"><Icon path={Icons.Chef} className="text-orange-600"/> Cocina</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {activeOrders.map(o => (
+                            <div key={o.id} className={`p-4 rounded-xl shadow bg-white border-l-8 ${o.status==='ready'?'border-green-500':'border-orange-500'}`}>
+                                <div className="flex justify-between items-start mb-2">
+                                    <div><div className="font-bold text-xl">#{o.number}</div><div className="font-medium text-lg">{o.clientName}</div></div>
+                                    <div className="text-xs bg-slate-100 px-2 py-1 rounded flex gap-1 font-mono"><Icon path={Icons.Clock} size={12}/> {o.prepTime}m</div>
+                                </div>
+                                <div className="bg-slate-50 p-3 rounded-lg mb-4 space-y-1 text-sm">
+                                    {o.items.map((i,x) => <div key={x} className="flex justify-between border-b border-dashed last:border-0 pb-1"><span className="font-bold text-lg">{i.q}</span><span className="flex-1 ml-2 text-base">{i.name}</span></div>)}
+                                </div>
+                                <button onClick={()=>update(o.id, o.status==='pending'?'ready':'delivered')} className={`w-full py-3 rounded-lg font-bold text-white shadow active:scale-95 transition-transform ${o.status==='pending'?'bg-orange-600':'bg-green-600'}`}>
+                                    {o.status==='pending' ? 'MARCAR LISTO' : 'ENTREGAR'}
+                                </button>
+                            </div>
+                        ))}
+                        {activeOrders.length === 0 && <p className="text-slate-400 col-span-3 text-center mt-10 italic">Todo tranquilo en la cocina.</p>}
+                    </div>
+                </div>
+            );
+        };
+
+        const AdminView = ({ db, isLocal, localState, setLocalState }) => {
+            const [tab, setTab] = useState('reportes');
+            const [products, setProducts] = useState(localState.products);
+            const [orders, setOrders] = useState(localState.orders);
+            const [newP, setNewP] = useState({ name: '', price: '', prepTime: '' });
+
+            // Sync
+            useEffect(() => {
+                if(isLocal || !db) {
+                    setProducts(localState.products);
+                    setOrders(localState.orders);
+                    return;
+                }
+                // (Omitido listeners en vivo para admin en este ejemplo simple, usa estado local si falla)
+            }, [db, isLocal, localState]);
+
+            const addProd = async () => {
+                if(!newP.name) return;
+                const prod = { ...newP, price: Number(newP.price), prepTime: Number(newP.prepTime), id: Date.now().toString() };
+                setProducts([...products, prod]);
+                if(isLocal) setLocalState(prev => ({...prev, products: [...prev.products, prod]}));
+                else if(db) addDoc(collection(db, 'artifacts', APP_ID, 'products'), prod);
+                setNewP({ name: '', price: '', prepTime: '' });
+            };
+
+            const deleteProd = (id) => {
+                const filtered = products.filter(p => p.id !== id);
+                setProducts(filtered);
+                if(isLocal) setLocalState(prev => ({...prev, products: filtered}));
+                else if(db) deleteDoc(doc(db, 'artifacts', APP_ID, 'products', id));
+            };
+
+            const total = orders.reduce((a,b) => a + (b.total || 0), 0);
+
+            const exportCSV = () => {
+                let csv = "Orden,Cliente,Total,Estado\n" + orders.map(o => `${o.number},${o.clientName},${o.total},${o.status}`).join("\n");
+                const link = document.createElement("a");
+                link.href = "data:text/csv;charset=utf-8," + encodeURI(csv);
+                link.download = "reporte.csv";
+                link.click();
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center bg-white p-4 rounded shadow">
+                        <h2 className="font-bold text-xl text-slate-800">Panel Admin</h2>
+                        <div className="flex gap-2">
+                            <button onClick={()=>setTab('reportes')} className={`px-4 py-2 rounded text-sm font-bold transition-colors ${tab==='reportes'?'bg-blue-600 text-white':'bg-slate-100 text-slate-600'}`}>Reportes</button>
+                            <button onClick={()=>setTab('menu')} className={`px-4 py-2 rounded text-sm font-bold transition-colors ${tab==='menu'?'bg-orange-600 text-white':'bg-slate-100 text-slate-600'}`}>Menú</button>
+                        </div>
+                    </div>
+
+                    {tab === 'reportes' && (
+                        <>
+                            <div className="bg-white p-6 rounded shadow border-l-4 border-blue-600 mb-4">
+                                <div className="text-slate-500 text-sm font-bold uppercase">Venta Total</div>
+                                <div className="text-4xl font-bold text-slate-800">${total.toFixed(2)}</div>
+                            </div>
+                            <div className="flex gap-2 mb-4 justify-end">
+                                <button onClick={()=>window.print()} className="bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded flex gap-2 items-center"><Icon path={Icons.Print} size={16}/> Imprimir PDF</button>
+                                <button onClick={exportCSV} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded flex gap-2 items-center"><Icon path={Icons.Download} size={16}/> Excel</button>
+                            </div>
+                            <div className="bg-white rounded shadow overflow-hidden">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-slate-100 text-slate-600 uppercase text-xs"><tr><th className="p-3">#</th><th className="p-3">Cliente</th><th className="p-3">Total</th></tr></thead>
+                                    <tbody>{orders.map(o => <tr key={o.id} className="border-b hover:bg-slate-50"><td className="p-3 font-bold">#{o.number}</td><td className="p-3">{o.clientName}</td><td className="p-3 font-mono">${o.total}</td></tr>)}</tbody>
+                                </table>
+                            </div>
+                        </>
+                    )}
+
+                    {tab === 'menu' && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="bg-white p-5 rounded-xl shadow h-fit">
+                                <h3 className="font-bold mb-4 flex gap-2 items-center text-slate-700"><Icon path={Icons.Plus} size={20}/> Nuevo Producto</h3>
+                                <div className="space-y-3">
+                                    <input className="border p-2 w-full rounded outline-none focus:ring-2 focus:ring-green-500" placeholder="Nombre del plato" value={newP.name} onChange={e=>setNewP({...newP,name:e.target.value})}/>
+                                    <div className="flex gap-2">
+                                        <input type="number" className="border p-2 w-full rounded outline-none" placeholder="Precio $$" value={newP.price} onChange={e=>setNewP({...newP,price:e.target.value})}/>
+                                        <input type="number" className="border p-2 w-full rounded outline-none" placeholder="Minutos" value={newP.prepTime} onChange={e=>setNewP({...newP,prepTime:e.target.value})}/>
+                                    </div>
+                                    <button onClick={addProd} className="bg-green-600 hover:bg-green-700 text-white w-full py-2 rounded font-bold transition-colors">Guardar</button>
+                                </div>
+                            </div>
+                            <div className="md:col-span-2 bg-white p-5 rounded-xl shadow">
+                                <h3 className="font-bold mb-4 text-slate-700">Lista Actual</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {products.map(p => (
+                                        <div key={p.id} className="border p-3 rounded-lg flex justify-between items-center bg-slate-50">
+                                            <div><div className="font-bold text-slate-800">{p.name}</div><div className="text-xs text-slate-500">${p.price} - {p.prepTime}m</div></div>
+                                            <button onClick={()=>deleteProd(p.id)} className="text-red-400 hover:text-red-600 p-2"><Icon path={Icons.Trash} size={18}/></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // --- APP PRINCIPAL ---
+        function App() {
+            const [user, setUser] = useState(null);
+            const [isLocal, setIsLocal] = useState(true); // Arranca en Local por defecto
+            const [db, setDb] = useState(null);
+            
+            const [localState, setLocalState] = useState({
+                products: [
+                    { id: '1', name: 'Hamburguesa Clásica', price: 5.00, prepTime: 15 },
+                    { id: '2', name: 'Papas Fritas', price: 2.50, prepTime: 5 },
+                    { id: '3', name: 'Gaseosa', price: 1.50, prepTime: 0 }
+                ],
+                orders: []
+            });
+
+            useEffect(() => {
+                const connect = async () => {
+                    try {
+                        const app = initializeApp(FIREBASE_CONFIG);
+                        const auth = getAuth(app);
+                        // Configuración crítica para evitar bloqueos de seguridad en IFrames/Archivos
+                        await setPersistence(auth, inMemoryPersistence);
+                        
+                        const firestore = getFirestore(app);
+                        setDb(firestore);
+                        
+                        await signInAnonymously(auth);
+                        onAuthStateChanged(auth, u => {
+                            if(u) setIsLocal(false); // Si conecta, pasa a Online
+                        });
+                    } catch(e) { 
+                        console.log("Modo Local Forzado por Seguridad:", e); 
+                    }
+                };
+                // Intentamos conectar sin bloquear la UI
+                setTimeout(connect, 500);
+            }, []);
+
+            return (
+                <div className="min-h-screen bg-slate-100 text-slate-800 font-sans">
+                    {!user ? (
+                        <LoginScreen onLogin={setUser} isLocal={isLocal} />
+                    ) : (
+                        <>
+                            <nav className="bg-slate-900 text-white p-4 flex justify-between items-center shadow sticky top-0 z-50 no-print">
+                                <div className="font-bold flex gap-2 items-center text-lg">
+                                    <Icon path={Icons.Beef} color="orange" size={32}/> Restaurante Ágil
+                                    <span className={`text-xs px-2 py-0.5 rounded font-bold flex items-center gap-1 ${isLocal ? 'bg-yellow-500 text-black' : 'bg-green-500 text-white'}`}>
+                                        <Icon path={isLocal ? Icons.WifiOff : Icons.Wifi} size={12}/> {isLocal ? 'LOCAL' : 'ONLINE'}
+                                    </span>
+                                </div>
+                                <div className="flex gap-4 items-center text-sm">
+                                    <span className="hidden sm:inline opacity-90">Hola, {user.nombre} ({user.rol})</span>
+                                    <button onClick={() => setUser(null)} className="flex items-center gap-1 hover:text-orange-300 transition-colors"><Icon path={Icons.LogOut} size={16}/> Salir</button>
+                                </div>
+                            </nav>
+                            <main className="container mx-auto p-4 no-print max-w-7xl">
+                                {user.rol === 'vendedor' && <VendedorView db={db} userData={user} isLocal={isLocal} localState={localState} setLocalState={setLocalState} />}
+                                {user.rol === 'cocinero' && <CocineroView db={db} isLocal={isLocal} localState={localState} setLocalState={setLocalState} />}
+                                {user.rol === 'admin' && <AdminView db={db} isLocal={isLocal} localState={localState} setLocalState={setLocalState} />}
+                            </main>
+                        </>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

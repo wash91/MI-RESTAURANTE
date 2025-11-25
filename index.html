@@ -30,9 +30,9 @@
     <script type="text/babel" data-type="module">
         // --- IMPORTS DESDE CDN (No requiere instalación) ---
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { 
+        import {
             getFirestore, collection, addDoc, updateDoc, deleteDoc,
-            doc, onSnapshot, query, orderBy, serverTimestamp 
+            doc, onSnapshot, query, orderBy, serverTimestamp, getDoc, setDoc
         } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import {
             getAuth, signInWithEmailAndPassword, onAuthStateChanged,
@@ -173,7 +173,7 @@
             );
         };
 
-        const LoginScreen = ({ onLogin, isLocal, auth }) => {
+        const LoginScreen = ({ onLogin, isLocal, auth, db }) => {
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
             const [loading, setLoading] = useState(false);
@@ -188,19 +188,33 @@
                     const userCredential = await signInWithEmailAndPassword(auth, email, password);
                     const user = userCredential.user;
 
-                    // Determinar rol basado en el email
-                    let rol = 'vendedor';
+                    // Consultar rol desde Firestore
+                    let rol = 'vendedor'; // rol por defecto
                     let nombre = email.split('@')[0];
 
-                    if (email.toLowerCase().includes('admin')) {
-                        rol = 'admin';
-                        nombre = 'Administrador';
-                    } else if (email.toLowerCase().includes('cocinero') || email.toLowerCase().includes('cocina')) {
-                        rol = 'cocinero';
-                        nombre = 'Cocinero';
-                    } else if (email.toLowerCase().includes('vendedor')) {
-                        rol = 'vendedor';
-                        nombre = 'Vendedor';
+                    if (db) {
+                        try {
+                            const userDocRef = doc(db, 'usuarios', user.uid);
+                            const userDoc = await getDoc(userDocRef);
+
+                            if (userDoc.exists()) {
+                                const userData = userDoc.data();
+                                rol = userData.rol || 'vendedor';
+                                nombre = userData.nombre || nombre;
+                            } else {
+                                // Si el usuario no existe en Firestore, crearlo con rol por defecto
+                                await setDoc(userDocRef, {
+                                    email: user.email,
+                                    nombre: nombre,
+                                    rol: 'vendedor',
+                                    creadoEn: new Date().toISOString()
+                                });
+                                console.log('Usuario creado en Firestore con rol vendedor');
+                            }
+                        } catch (firestoreError) {
+                            console.error('Error consultando Firestore:', firestoreError);
+                            // Si falla Firestore, continuar con rol por defecto
+                        }
                     }
 
                     onLogin({ id: user.uid, nombre, rol, email: user.email });
@@ -891,7 +905,7 @@
             return (
                 <div className="min-h-screen bg-slate-100 text-slate-800 font-sans">
                     {!user ? (
-                        <LoginScreen onLogin={setUser} isLocal={isLocal} auth={auth} />
+                        <LoginScreen onLogin={setUser} isLocal={isLocal} auth={auth} db={db} />
                     ) : (
                         <>
                             <nav className="bg-slate-900 text-white p-4 flex justify-between items-center shadow sticky top-0 z-50 no-print">

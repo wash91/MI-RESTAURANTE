@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurar Usuarios - Restaurante Ágil</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 p-8">
+    <div class="max-w-4xl mx-auto">
+        <div class="bg-white rounded-lg shadow-xl p-6 mb-6">
+            <h1 class="text-3xl font-bold text-slate-800 mb-2">🔧 Configuración de Usuarios</h1>
+            <p class="text-slate-600">Configura los roles de los usuarios en Firebase Firestore</p>
+        </div>
+
+        <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6">
+            <h3 class="font-bold text-blue-800 mb-2">📝 Instrucciones:</h3>
+            <ol class="text-sm text-blue-700 space-y-1 list-decimal list-inside">
+                <li>Este script configurará los roles de tus usuarios en Firestore</li>
+                <li>Los usuarios deben estar creados en Firebase Authentication</li>
+                <li>Actualiza el UID de cada usuario según Firebase Authentication</li>
+                <li>Click en "Configurar Usuarios" para guardar en Firestore</li>
+            </ol>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-xl p-6 mb-6">
+            <h2 class="text-xl font-bold text-slate-800 mb-4">👥 Usuarios a Configurar</h2>
+
+            <div class="bg-yellow-50 border-l-4 border-yellow-500 p-4 mb-4">
+                <p class="text-sm text-yellow-800">
+                    <strong>⚠️ Importante:</strong> Para obtener el UID de cada usuario:
+                    <br>1. Ve a <a href="https://console.firebase.google.com/project/mini-restaurante-d0353/authentication/users" target="_blank" class="underline text-blue-600">Firebase Authentication</a>
+                    <br>2. Copia el "User UID" de cada usuario
+                    <br>3. Pégalo en el campo correspondiente abajo
+                </p>
+            </div>
+
+            <div class="space-y-4" id="usuarios-form">
+                <!-- Usuario 1: Administrador -->
+                <div class="border rounded-lg p-4 bg-slate-50">
+                    <h3 class="font-bold text-lg mb-3">👑 Administrador</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-sm font-bold mb-1">Email</label>
+                            <input type="email" value="jonathanlk08@gmail.com" readonly class="w-full p-2 border rounded bg-gray-100" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold mb-1">Nombre</label>
+                            <input type="text" id="admin-nombre" value="Jonathan" class="w-full p-2 border rounded" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold mb-1">User UID (Firebase Auth)</label>
+                            <input type="text" id="admin-uid" placeholder="Pega el UID aquí" class="w-full p-2 border rounded" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Usuario 2: Vendedor -->
+                <div class="border rounded-lg p-4 bg-slate-50">
+                    <h3 class="font-bold text-lg mb-3">🛒 Vendedor</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-sm font-bold mb-1">Email</label>
+                            <input type="email" value="lucymontenieves@gmail.com" readonly class="w-full p-2 border rounded bg-gray-100" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold mb-1">Nombre</label>
+                            <input type="text" id="vendedor-nombre" value="Lucy Montenieves" class="w-full p-2 border rounded" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold mb-1">User UID (Firebase Auth)</label>
+                            <input type="text" id="vendedor-uid" placeholder="Pega el UID aquí" class="w-full p-2 border rounded" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex gap-4">
+            <button onclick="configurarUsuarios()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg flex-1">
+                ✅ Configurar Usuarios en Firestore
+            </button>
+            <button onclick="verificarUsuarios()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg flex-1">
+                🔍 Verificar Configuración
+            </button>
+        </div>
+
+        <div id="resultado" class="mt-6"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyBedWCRDfZWIxj9HNxHqN0bD7G7W3jaKqA",
+            authDomain: "mini-restaurante-d0353.firebaseapp.com",
+            projectId: "mini-restaurante-d0353",
+            storageBucket: "mini-restaurante-d0353.firebasestorage.app",
+            messagingSenderId: "630103435028",
+            appId: "1:630103435028:web:e417df55fe261bcb894401"
+        };
+
+        const app = initializeApp(FIREBASE_CONFIG);
+        const db = getFirestore(app);
+
+        window.configurarUsuarios = async function() {
+            const adminUid = document.getElementById('admin-uid').value.trim();
+            const adminNombre = document.getElementById('admin-nombre').value.trim();
+            const vendedorUid = document.getElementById('vendedor-uid').value.trim();
+            const vendedorNombre = document.getElementById('vendedor-nombre').value.trim();
+
+            if (!adminUid || !vendedorUid) {
+                mostrarResultado('❌ Por favor completa todos los UIDs', 'error');
+                return;
+            }
+
+            const resultado = document.getElementById('resultado');
+            resultado.innerHTML = '<div class="bg-blue-50 border-l-4 border-blue-500 p-4"><p class="text-blue-700">⏳ Configurando usuarios...</p></div>';
+
+            try {
+                // Configurar Administrador
+                await setDoc(doc(db, 'usuarios', adminUid), {
+                    email: 'jonathanlk08@gmail.com',
+                    nombre: adminNombre,
+                    rol: 'admin',
+                    creadoEn: new Date().toISOString(),
+                    actualizadoEn: new Date().toISOString()
+                });
+
+                // Configurar Vendedor
+                await setDoc(doc(db, 'usuarios', vendedorUid), {
+                    email: 'lucymontenieves@gmail.com',
+                    nombre: vendedorNombre,
+                    rol: 'vendedor',
+                    creadoEn: new Date().toISOString(),
+                    actualizadoEn: new Date().toISOString()
+                });
+
+                mostrarResultado(`
+                    ✅ ¡Usuarios configurados exitosamente!
+                    <br><br>
+                    <strong>Administrador:</strong> ${adminNombre} (jonathanlk08@gmail.com)
+                    <br><strong>Vendedor:</strong> ${vendedorNombre} (lucymontenieves@gmail.com)
+                    <br><br>
+                    Ahora puedes iniciar sesión en el sistema principal con estos usuarios.
+                `, 'success');
+            } catch (error) {
+                console.error('Error:', error);
+                mostrarResultado('❌ Error: ' + error.message, 'error');
+            }
+        };
+
+        window.verificarUsuarios = async function() {
+            const adminUid = document.getElementById('admin-uid').value.trim();
+            const vendedorUid = document.getElementById('vendedor-uid').value.trim();
+
+            if (!adminUid && !vendedorUid) {
+                mostrarResultado('❌ Ingresa al menos un UID para verificar', 'error');
+                return;
+            }
+
+            const resultado = document.getElementById('resultado');
+            resultado.innerHTML = '<div class="bg-blue-50 border-l-4 border-blue-500 p-4"><p class="text-blue-700">⏳ Verificando...</p></div>';
+
+            try {
+                let mensaje = '<strong>📋 Usuarios en Firestore:</strong><br><br>';
+
+                if (adminUid) {
+                    const adminDoc = await getDoc(doc(db, 'usuarios', adminUid));
+                    if (adminDoc.exists()) {
+                        const data = adminDoc.data();
+                        mensaje += `✅ <strong>Admin:</strong> ${data.nombre} (${data.email}) - Rol: ${data.rol}<br>`;
+                    } else {
+                        mensaje += `❌ <strong>Admin:</strong> No encontrado en Firestore<br>`;
+                    }
+                }
+
+                if (vendedorUid) {
+                    const vendedorDoc = await getDoc(doc(db, 'usuarios', vendedorUid));
+                    if (vendedorDoc.exists()) {
+                        const data = vendedorDoc.data();
+                        mensaje += `✅ <strong>Vendedor:</strong> ${data.nombre} (${data.email}) - Rol: ${data.rol}<br>`;
+                    } else {
+                        mensaje += `❌ <strong>Vendedor:</strong> No encontrado en Firestore<br>`;
+                    }
+                }
+
+                mostrarResultado(mensaje, 'info');
+            } catch (error) {
+                console.error('Error:', error);
+                mostrarResultado('❌ Error: ' + error.message, 'error');
+            }
+        };
+
+        function mostrarResultado(mensaje, tipo) {
+            const colores = {
+                success: 'bg-green-50 border-green-500 text-green-700',
+                error: 'bg-red-50 border-red-500 text-red-700',
+                info: 'bg-blue-50 border-blue-500 text-blue-700'
+            };
+
+            document.getElementById('resultado').innerHTML = `
+                <div class="${colores[tipo]} border-l-4 p-4 rounded">
+                    <p>${mensaje}</p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

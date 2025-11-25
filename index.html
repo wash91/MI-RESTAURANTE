@@ -13,6 +13,9 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+    <!-- 3. SheetJS para exportación a Excel real -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+
     <!-- Estilos base -->
     <style>
         body { background-color: #f1f5f9; font-family: system-ui, sans-serif; }
@@ -78,6 +81,97 @@
 
         // --- COMPONENTES ---
 
+        // Componente de Impresión de Ticket
+        const PrintTicket = ({ order, onClose }) => {
+            useEffect(() => {
+                if(order) {
+                    setTimeout(() => window.print(), 300);
+                }
+            }, [order]);
+
+            if(!order) return null;
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={onClose}>
+                    <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold text-lg">Orden lista para imprimir</h3>
+                            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+                        </div>
+                        <div className="text-center mb-4 text-slate-600">La orden se enviará a imprimir automáticamente</div>
+                        <div className="flex gap-2">
+                            <button onClick={() => window.print()} className="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700 flex items-center justify-center gap-2">
+                                <Icon path={Icons.Print} size={16}/> Imprimir
+                            </button>
+                            <button onClick={onClose} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded hover:bg-slate-300">Cerrar</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Ticket para impresión (oculto hasta que se active)
+        const TicketToPrint = ({ order }) => {
+            if(!order) return null;
+            const formatMoney = n => `$${Number(n).toFixed(2)}`;
+
+            return (
+                <div className="hidden print:block p-8 bg-white" style={{width: '80mm'}}>
+                    <div className="text-center mb-4">
+                        <h1 className="text-2xl font-bold">Restaurante Ágil</h1>
+                        <p className="text-sm">--- ORDEN DE VENTA ---</p>
+                    </div>
+                    <div className="border-y border-dashed py-2 mb-2 text-sm space-y-1">
+                        <div className="flex justify-between"><span>Orden #:</span><span className="font-bold">#{order.number}</span></div>
+                        <div className="flex justify-between"><span>Cliente:</span><span className="font-bold">{order.clientName}</span></div>
+                        <div className="flex justify-between"><span>Vendedor:</span><span>{order.seller}</span></div>
+                        <div className="flex justify-between"><span>Fecha:</span><span>{new Date(order.createdAt).toLocaleString()}</span></div>
+                        <div className="flex justify-between"><span>Tiempo prep:</span><span>{order.prepTime} min</span></div>
+                    </div>
+                    <div className="mb-2">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="border-b">
+                                    <th className="text-left py-1">Cant</th>
+                                    <th className="text-left py-1">Producto</th>
+                                    <th className="text-right py-1">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {order.items.map((item, i) => (
+                                    <tr key={i} className="border-b border-dashed">
+                                        <td className="py-1">{item.q}</td>
+                                        <td className="py-1">{item.name}</td>
+                                        <td className="text-right py-1">{formatMoney(item.price * item.q)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div className="border-t-2 border-black pt-2 mb-4">
+                        <div className="flex justify-between text-lg font-bold">
+                            <span>TOTAL:</span>
+                            <span>{formatMoney(order.total)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm mt-1">
+                            <span>Estado de Pago:</span>
+                            <span className="font-bold uppercase">{order.paymentStatus}</span>
+                        </div>
+                        {order.paymentMethod && (
+                            <div className="flex justify-between text-sm">
+                                <span>Método:</span>
+                                <span className="font-bold uppercase">{order.paymentMethod}</span>
+                            </div>
+                        )}
+                    </div>
+                    <div className="text-center text-xs border-t border-dashed pt-2">
+                        <p>¡Gracias por su preferencia!</p>
+                        <p className="mt-1">www.restauranteagil.com</p>
+                    </div>
+                </div>
+            );
+        };
+
         const LoginScreen = ({ onLogin, isLocal }) => {
             const users = [
                 { id: 'u1', nombre: 'Vendedor', rol: 'vendedor' },
@@ -120,6 +214,8 @@
             const [payment, setPayment] = useState({ status: 'cancelado', method: '' });
             const [products, setProducts] = useState(localState.products);
             const [orders, setOrders] = useState(localState.orders);
+            const [lastOrder, setLastOrder] = useState(null);
+            const [showPrintDialog, setShowPrintDialog] = useState(false);
 
             // Sync Online
             useEffect(() => {
@@ -164,6 +260,8 @@
                 const updatedOrders = [newOrder, ...orders];
                 setOrders(updatedOrders);
                 setLocalState(prev => ({ ...prev, orders: updatedOrders }));
+                setLastOrder(newOrder);
+                setShowPrintDialog(true);
                 setCart([]); setClient(''); setPayment({ status: 'cancelado', method: '' });
 
                 if(!isLocal && db) {
@@ -176,7 +274,10 @@
             const formatMoney = n => `$${Number(n).toFixed(2)}`;
 
             return (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
+                <>
+                    {showPrintDialog && <PrintTicket order={lastOrder} onClose={() => setShowPrintDialog(false)} />}
+                    <TicketToPrint order={lastOrder} />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
                     <div className="bg-white p-4 rounded shadow flex flex-col h-full">
                         <h3 className="font-bold mb-4 flex items-center gap-2 text-slate-700"><Icon path={Icons.Utensils}/> Menú</h3>
                         <div className="flex-1 overflow-y-auto space-y-2">
@@ -234,7 +335,8 @@
                             ))}
                         </div>
                     </div>
-                </div>
+                    </div>
+                </>
             );
         };
 
@@ -293,6 +395,7 @@
             const [products, setProducts] = useState(localState.products);
             const [orders, setOrders] = useState(localState.orders);
             const [newP, setNewP] = useState({ name: '', price: '', prepTime: '' });
+            const [filterDate, setFilterDate] = useState('');
 
             // Sync
             useEffect(() => {
@@ -320,43 +423,296 @@
                 else if(db) deleteDoc(doc(db, 'artifacts', APP_ID, 'products', id));
             };
 
-            const total = orders.reduce((a,b) => a + (b.total || 0), 0);
-
-            const exportCSV = () => {
-                let csv = "Orden,Cliente,Total,Estado\n" + orders.map(o => `${o.number},${o.clientName},${o.total},${o.status}`).join("\n");
-                const link = document.createElement("a");
-                link.href = "data:text/csv;charset=utf-8," + encodeURI(csv);
-                link.download = "reporte.csv";
-                link.click();
+            // Funciones para actualizar órdenes
+            const updateOrderStatus = (id, status) => {
+                const updated = orders.map(o => o.id === id ? {...o, status} : o);
+                setOrders(updated);
+                if(isLocal) setLocalState(prev => ({...prev, orders: updated}));
+                else if(db) updateDoc(doc(db, 'artifacts', APP_ID, 'orders', id), { status });
             };
+
+            const updatePaymentStatus = (id, paymentStatus, paymentMethod) => {
+                const updated = orders.map(o => o.id === id ? {...o, paymentStatus, paymentMethod} : o);
+                setOrders(updated);
+                if(isLocal) setLocalState(prev => ({...prev, orders: updated}));
+                else if(db) updateDoc(doc(db, 'artifacts', APP_ID, 'orders', id), { paymentStatus, paymentMethod });
+            };
+
+            // Cálculos de reportes
+            const filteredOrders = filterDate ? orders.filter(o => {
+                const orderDate = new Date(o.createdAt).toISOString().split('T')[0];
+                return orderDate === filterDate;
+            }) : orders;
+
+            const total = filteredOrders.reduce((a,b) => a + (b.total || 0), 0);
+            const totalEfectivo = filteredOrders.filter(o => o.paymentMethod === 'efectivo').reduce((a,b) => a + (b.total || 0), 0);
+            const totalTransferencia = filteredOrders.filter(o => o.paymentMethod === 'transferencia').reduce((a,b) => a + (b.total || 0), 0);
+            const totalPendiente = filteredOrders.filter(o => o.paymentStatus === 'pendiente').reduce((a,b) => a + (b.total || 0), 0);
+            const totalPagado = filteredOrders.filter(o => o.paymentStatus === 'cancelado').reduce((a,b) => a + (b.total || 0), 0);
+
+            // Productos vendidos
+            const productsSold = {};
+            filteredOrders.forEach(order => {
+                order.items.forEach(item => {
+                    if(!productsSold[item.name]) {
+                        productsSold[item.name] = { quantity: 0, total: 0 };
+                    }
+                    productsSold[item.name].quantity += item.q;
+                    productsSold[item.name].total += item.price * item.q;
+                });
+            });
+
+            const exportExcel = () => {
+                const ws_data = [
+                    ['REPORTE DE VENTAS - RESTAURANTE ÁGIL'],
+                    ['Fecha de generación:', new Date().toLocaleString()],
+                    [],
+                    ['RESUMEN'],
+                    ['Total General:', `$${total.toFixed(2)}`],
+                    ['Total Pagado:', `$${totalPagado.toFixed(2)}`],
+                    ['Total Pendiente:', `$${totalPendiente.toFixed(2)}`],
+                    ['Total Efectivo:', `$${totalEfectivo.toFixed(2)}`],
+                    ['Total Transferencia:', `$${totalTransferencia.toFixed(2)}`],
+                    [],
+                    ['DETALLE DE ÓRDENES'],
+                    ['#', 'Cliente', 'Vendedor', 'Total', 'Estado Pago', 'Método', 'Estado Orden', 'Fecha']
+                ];
+
+                filteredOrders.forEach(o => {
+                    ws_data.push([
+                        o.number,
+                        o.clientName,
+                        o.seller || 'N/A',
+                        o.total,
+                        o.paymentStatus,
+                        o.paymentMethod || 'N/A',
+                        o.status,
+                        new Date(o.createdAt).toLocaleString()
+                    ]);
+                });
+
+                ws_data.push([]);
+                ws_data.push(['PRODUCTOS VENDIDOS']);
+                ws_data.push(['Producto', 'Cantidad', 'Total']);
+                Object.entries(productsSold).forEach(([name, data]) => {
+                    ws_data.push([name, data.quantity, `$${data.total.toFixed(2)}`]);
+                });
+
+                const ws = XLSX.utils.aoa_to_sheet(ws_data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
+                XLSX.writeFile(wb, `reporte_ventas_${new Date().toISOString().split('T')[0]}.xlsx`);
+            };
+
+            const formatMoney = n => `$${Number(n).toFixed(2)}`;
+            const activeOrders = orders.filter(o => o.status !== 'delivered');
 
             return (
                 <div className="space-y-6">
                     <div className="flex justify-between items-center bg-white p-4 rounded shadow">
                         <h2 className="font-bold text-xl text-slate-800">Panel Admin</h2>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                             <button onClick={()=>setTab('reportes')} className={`px-4 py-2 rounded text-sm font-bold transition-colors ${tab==='reportes'?'bg-blue-600 text-white':'bg-slate-100 text-slate-600'}`}>Reportes</button>
+                            <button onClick={()=>setTab('cobros')} className={`px-4 py-2 rounded text-sm font-bold transition-colors ${tab==='cobros'?'bg-green-600 text-white':'bg-slate-100 text-slate-600'}`}>Cobros</button>
+                            <button onClick={()=>setTab('cocina')} className={`px-4 py-2 rounded text-sm font-bold transition-colors ${tab==='cocina'?'bg-purple-600 text-white':'bg-slate-100 text-slate-600'}`}>Cocina</button>
                             <button onClick={()=>setTab('menu')} className={`px-4 py-2 rounded text-sm font-bold transition-colors ${tab==='menu'?'bg-orange-600 text-white':'bg-slate-100 text-slate-600'}`}>Menú</button>
                         </div>
                     </div>
 
                     {tab === 'reportes' && (
                         <>
-                            <div className="bg-white p-6 rounded shadow border-l-4 border-blue-600 mb-4">
-                                <div className="text-slate-500 text-sm font-bold uppercase">Venta Total</div>
-                                <div className="text-4xl font-bold text-slate-800">${total.toFixed(2)}</div>
+                            <div className="mb-4 bg-white p-4 rounded shadow">
+                                <label className="block text-sm font-bold mb-2">Filtrar por fecha:</label>
+                                <input type="date" value={filterDate} onChange={e=>setFilterDate(e.target.value)} className="border p-2 rounded outline-none focus:ring-2 focus:ring-blue-500"/>
+                                {filterDate && <button onClick={()=>setFilterDate('')} className="ml-2 text-sm text-blue-600 hover:underline">Limpiar filtro</button>}
                             </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                <div className="bg-white p-6 rounded shadow border-l-4 border-blue-600">
+                                    <div className="text-slate-500 text-sm font-bold uppercase">Total General</div>
+                                    <div className="text-3xl font-bold text-slate-800">{formatMoney(total)}</div>
+                                </div>
+                                <div className="bg-white p-6 rounded shadow border-l-4 border-green-600">
+                                    <div className="text-slate-500 text-sm font-bold uppercase">Total Pagado</div>
+                                    <div className="text-3xl font-bold text-green-700">{formatMoney(totalPagado)}</div>
+                                </div>
+                                <div className="bg-white p-6 rounded shadow border-l-4 border-red-600">
+                                    <div className="text-slate-500 text-sm font-bold uppercase">Total Pendiente</div>
+                                    <div className="text-3xl font-bold text-red-700">{formatMoney(totalPendiente)}</div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <div className="bg-white p-6 rounded shadow border-l-4 border-purple-600">
+                                    <div className="text-slate-500 text-sm font-bold uppercase flex items-center gap-2"><Icon path={Icons.Cash} size={16}/>Efectivo</div>
+                                    <div className="text-3xl font-bold text-purple-700">{formatMoney(totalEfectivo)}</div>
+                                </div>
+                                <div className="bg-white p-6 rounded shadow border-l-4 border-indigo-600">
+                                    <div className="text-slate-500 text-sm font-bold uppercase flex items-center gap-2"><Icon path={Icons.Card} size={16}/>Transferencia</div>
+                                    <div className="text-3xl font-bold text-indigo-700">{formatMoney(totalTransferencia)}</div>
+                                </div>
+                            </div>
+
+                            <div className="bg-white p-6 rounded shadow mb-4">
+                                <h3 className="font-bold text-lg mb-4">Productos Vendidos</h3>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-slate-100">
+                                            <tr><th className="p-3 text-left">Producto</th><th className="p-3 text-center">Cantidad</th><th className="p-3 text-right">Total</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            {Object.entries(productsSold).map(([name, data]) => (
+                                                <tr key={name} className="border-b hover:bg-slate-50">
+                                                    <td className="p-3 font-medium">{name}</td>
+                                                    <td className="p-3 text-center font-bold">{data.quantity}</td>
+                                                    <td className="p-3 text-right font-mono">{formatMoney(data.total)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
                             <div className="flex gap-2 mb-4 justify-end">
                                 <button onClick={()=>window.print()} className="bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded flex gap-2 items-center"><Icon path={Icons.Print} size={16}/> Imprimir PDF</button>
-                                <button onClick={exportCSV} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded flex gap-2 items-center"><Icon path={Icons.Download} size={16}/> Excel</button>
+                                <button onClick={exportExcel} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded flex gap-2 items-center"><Icon path={Icons.Download} size={16}/> Exportar Excel</button>
                             </div>
                             <div className="bg-white rounded shadow overflow-hidden">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-slate-100 text-slate-600 uppercase text-xs"><tr><th className="p-3">#</th><th className="p-3">Cliente</th><th className="p-3">Total</th></tr></thead>
-                                    <tbody>{orders.map(o => <tr key={o.id} className="border-b hover:bg-slate-50"><td className="p-3 font-bold">#{o.number}</td><td className="p-3">{o.clientName}</td><td className="p-3 font-mono">${o.total}</td></tr>)}</tbody>
-                                </table>
+                                <h3 className="font-bold text-lg p-4 bg-slate-50">Detalle de Órdenes</h3>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-slate-100 text-slate-600 uppercase text-xs">
+                                            <tr>
+                                                <th className="p-3">#</th>
+                                                <th className="p-3">Cliente</th>
+                                                <th className="p-3">Vendedor</th>
+                                                <th className="p-3">Total</th>
+                                                <th className="p-3">Estado Pago</th>
+                                                <th className="p-3">Método</th>
+                                                <th className="p-3">Estado</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filteredOrders.map(o => (
+                                                <tr key={o.id} className="border-b hover:bg-slate-50">
+                                                    <td className="p-3 font-bold">#{o.number}</td>
+                                                    <td className="p-3">{o.clientName}</td>
+                                                    <td className="p-3">{o.seller || 'N/A'}</td>
+                                                    <td className="p-3 font-mono">{formatMoney(o.total)}</td>
+                                                    <td className="p-3"><span className={`px-2 py-1 rounded text-xs font-bold ${o.paymentStatus==='cancelado'?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}`}>{o.paymentStatus}</span></td>
+                                                    <td className="p-3 uppercase text-xs">{o.paymentMethod || 'N/A'}</td>
+                                                    <td className="p-3"><span className={`px-2 py-1 rounded text-xs font-bold ${o.status==='delivered'?'bg-blue-100 text-blue-700':o.status==='ready'?'bg-orange-100 text-orange-700':'bg-slate-100 text-slate-700'}`}>{o.status}</span></td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </>
+                    )}
+
+                    {tab === 'cobros' && (
+                        <div className="space-y-4">
+                            <div className="bg-white p-4 rounded shadow">
+                                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Icon path={Icons.Cash}/>Gestión de Cobros</h3>
+                                <p className="text-sm text-slate-600 mb-4">Administra los estados de pago de las órdenes</p>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {orders.map(o => (
+                                    <div key={o.id} className={`bg-white p-4 rounded-lg shadow border-l-4 ${o.paymentStatus==='cancelado'?'border-green-500':'border-red-500'}`}>
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div>
+                                                <div className="font-bold text-xl">#{o.number}</div>
+                                                <div className="text-sm text-slate-600">{o.clientName}</div>
+                                                <div className="text-xs text-slate-400">{o.seller}</div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="font-bold text-lg">{formatMoney(o.total)}</div>
+                                                <div className={`text-xs font-bold px-2 py-1 rounded mt-1 ${o.paymentStatus==='cancelado'?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}`}>
+                                                    {o.paymentStatus}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="bg-slate-50 p-2 rounded mb-3 space-y-1 text-xs">
+                                            {o.items.map((item,i) => <div key={i} className="flex justify-between"><span>{item.q}x {item.name}</span><span>{formatMoney(item.price * item.q)}</span></div>)}
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="text-xs text-slate-500">Método actual: <span className="font-bold uppercase">{o.paymentMethod || 'N/A'}</span></div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => updatePaymentStatus(o.id, 'cancelado', 'efectivo')}
+                                                    className={`flex-1 py-2 rounded text-xs font-bold transition-colors ${o.paymentStatus==='cancelado' && o.paymentMethod==='efectivo'?'bg-green-600 text-white':'bg-slate-100 hover:bg-green-50'}`}
+                                                >
+                                                    Efectivo
+                                                </button>
+                                                <button
+                                                    onClick={() => updatePaymentStatus(o.id, 'cancelado', 'transferencia')}
+                                                    className={`flex-1 py-2 rounded text-xs font-bold transition-colors ${o.paymentStatus==='cancelado' && o.paymentMethod==='transferencia'?'bg-blue-600 text-white':'bg-slate-100 hover:bg-blue-50'}`}
+                                                >
+                                                    Transfer.
+                                                </button>
+                                            </div>
+                                            <button
+                                                onClick={() => updatePaymentStatus(o.id, 'pendiente', '')}
+                                                className="w-full py-2 rounded text-xs font-bold bg-red-100 hover:bg-red-200 text-red-700"
+                                            >
+                                                Marcar Pendiente
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {tab === 'cocina' && (
+                        <div className="space-y-4">
+                            <div className="bg-white p-4 rounded shadow">
+                                <h3 className="font-bold text-lg mb-2 flex items-center gap-2"><Icon path={Icons.Chef}/>Vista de Cocina</h3>
+                                <p className="text-sm text-slate-600">Controla el estado de preparación de las órdenes</p>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {activeOrders.map(o => (
+                                    <div key={o.id} className={`p-4 rounded-xl shadow bg-white border-l-8 ${o.status==='ready'?'border-green-500':'border-orange-500'}`}>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div>
+                                                <div className="font-bold text-xl">#{o.number}</div>
+                                                <div className="font-medium text-lg">{o.clientName}</div>
+                                                <div className="text-xs text-slate-400 mt-1">{o.seller}</div>
+                                            </div>
+                                            <div className="text-xs bg-slate-100 px-2 py-1 rounded flex gap-1 font-mono">
+                                                <Icon path={Icons.Clock} size={12}/> {o.prepTime}m
+                                            </div>
+                                        </div>
+                                        <div className="bg-slate-50 p-3 rounded-lg mb-4 space-y-1 text-sm">
+                                            {o.items.map((i,x) => (
+                                                <div key={x} className="flex justify-between border-b border-dashed last:border-0 pb-1">
+                                                    <span className="font-bold text-lg">{i.q}</span>
+                                                    <span className="flex-1 ml-2 text-base">{i.name}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="mb-3 text-xs">
+                                            <div className="flex justify-between mb-1">
+                                                <span className="text-slate-500">Pago:</span>
+                                                <span className={`font-bold ${o.paymentStatus==='cancelado'?'text-green-600':'text-red-600'}`}>
+                                                    {o.paymentStatus} {o.paymentMethod && `(${o.paymentMethod})`}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => updateOrderStatus(o.id, o.status==='pending'?'ready':'delivered')}
+                                            className={`w-full py-3 rounded-lg font-bold text-white shadow active:scale-95 transition-transform ${o.status==='pending'?'bg-orange-600 hover:bg-orange-700':'bg-green-600 hover:bg-green-700'}`}
+                                        >
+                                            {o.status==='pending' ? 'MARCAR LISTO' : 'ENTREGAR'}
+                                        </button>
+                                    </div>
+                                ))}
+                                {activeOrders.length === 0 && (
+                                    <p className="text-slate-400 col-span-3 text-center mt-10 italic">No hay órdenes activas en cocina.</p>
+                                )}
+                            </div>
+                        </div>
                     )}
 
                     {tab === 'menu' && (

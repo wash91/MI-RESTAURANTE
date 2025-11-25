@@ -1,0 +1,25 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Reglas para usuarios - Permitir lectura autenticada
+    match /usuarios/{userId} {
+      // Cualquier usuario autenticado puede leer cualquier documento de usuario
+      // Esto es necesario para que el sistema pueda consultar el rol al hacer login
+      allow read: if request.auth != null;
+
+      // Solo permitir escritura desde la consola o Admin SDK
+      allow write: if false;
+    }
+
+    // Reglas para artifacts (productos y órdenes)
+    match /artifacts/{appId}/products/{productId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /artifacts/{appId}/orders/{orderId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

@@ -188,36 +188,57 @@
                     const userCredential = await signInWithEmailAndPassword(auth, email, password);
                     const user = userCredential.user;
 
+                    console.log('✅ Autenticación exitosa');
+                    console.log('📧 Email:', user.email);
+                    console.log('🔑 UID:', user.uid);
+                    console.log('---');
+
                     // Consultar rol desde Firestore
                     let rol = 'vendedor'; // rol por defecto
                     let nombre = email.split('@')[0];
+                    let firestoreOk = false;
 
                     if (db) {
                         try {
                             const userDocRef = doc(db, 'usuarios', user.uid);
+                            console.log('🔍 Buscando usuario en Firestore con UID:', user.uid);
+
                             const userDoc = await getDoc(userDocRef);
 
                             if (userDoc.exists()) {
                                 const userData = userDoc.data();
                                 rol = userData.rol || 'vendedor';
                                 nombre = userData.nombre || nombre;
+                                firestoreOk = true;
+                                console.log('✅ Usuario encontrado en Firestore');
+                                console.log('👤 Nombre:', nombre);
+                                console.log('🎭 Rol:', rol);
                             } else {
-                                // Si el usuario no existe en Firestore, crearlo con rol por defecto
-                                await setDoc(userDocRef, {
-                                    email: user.email,
-                                    nombre: nombre,
-                                    rol: 'vendedor',
-                                    creadoEn: new Date().toISOString()
-                                });
-                                console.log('Usuario creado en Firestore con rol vendedor');
+                                console.warn('⚠️ Usuario NO encontrado en Firestore');
+                                console.warn('📝 Para configurar este usuario:');
+                                console.warn('   1. Ve a Firestore Console');
+                                console.warn('   2. Colección: usuarios');
+                                console.warn('   3. Document ID:', user.uid);
+                                console.warn('   4. Campos: { email, nombre, rol }');
+
+                                // Mostrar alerta al usuario
+                                setError(`Usuario autenticado pero sin rol configurado. UID: ${user.uid.substring(0, 10)}...`);
+                                setLoading(false);
+                                return;
                             }
                         } catch (firestoreError) {
-                            console.error('Error consultando Firestore:', firestoreError);
-                            // Si falla Firestore, continuar con rol por defecto
+                            console.error('❌ Error consultando Firestore:', firestoreError);
+                            console.error('📋 Detalles:', firestoreError.message);
+                            setError('Error al consultar datos del usuario. Revisa la consola (F12).');
+                            setLoading(false);
+                            return;
                         }
                     }
 
-                    onLogin({ id: user.uid, nombre, rol, email: user.email });
+                    if (firestoreOk) {
+                        console.log('🚀 Iniciando sesión con rol:', rol);
+                        onLogin({ id: user.uid, nombre, rol, email: user.email });
+                    }
                 } catch (error) {
                     console.error('Error de login:', error);
                     let errorMessage = 'Error al iniciar sesión';
